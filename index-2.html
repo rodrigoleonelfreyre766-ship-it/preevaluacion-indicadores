@@ -16,7 +16,15 @@
 <label for="cuit">CUIL / CUIT</label>
 <input id="cuit" inputmode="numeric" maxlength="13" placeholder="Ingresá 11 dígitos">
 <label for="monto">Monto solicitado</label>
-<input id="monto" inputmode="numeric" placeholder="Ej.: 3000000">
+<input id="monto" inputmode="numeric" placeholder="Ej.: 3000000"><label for="plazo">Elegí el plan de cuotas</label>
+<select id="plazo">
+  <option value="12">12 cuotas</option>
+  <option value="24">24 cuotas</option>
+  <option value="36">36 cuotas</option>
+  <option value="48">48 cuotas</option>
+</select>
+
+<div id="cuota"></div>
 <button id="btn" onclick="consultar()">EVALUAR SOLICITUD</button>
 
 <div id="loading" class="loading"><div class="spin">⏳</div><b>Estamos analizando los datos...</b><br><br>Consultando información disponible.</div>
@@ -92,6 +100,61 @@ function render(d,monto){
 }
 function row(a,b){return "<div class='row'><span>"+escapeHtml(a)+"</span><b>"+escapeHtml(String(b??""))+"</b></div>"}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
-</script>
+const plazo = document.getElementById("plazo");
+const montoInput = document.getElementById("monto");
+const cuota = document.getElementById("cuota");
+
+function calcularCuota() {
+  const monto = Number(montoInput.value.replace(/\D/g, ""));
+  const n = Number(plazo.value);
+
+  if (!monto || monto <= 0) {
+    cuota.innerHTML = "";
+    return;
+  }
+
+  const tasaAnual = 0.43;
+  const tasaMensual = tasaAnual / 12;
+
+  const valorCuota =
+    monto *
+    (tasaMensual * Math.pow(1 + tasaMensual, n)) /
+    (Math.pow(1 + tasaMensual, n) - 1);
+
+  const total = valorCuota * n;
+
+  cuota.innerHTML = `
+    <div style="margin-top:18px;padding:18px;border-radius:14px;background:#eef2ff;">
+      <div style="font-size:15px;color:#667085;">Plan seleccionado</div>
+      <div style="font-size:25px;font-weight:800;margin:5px 0;">
+        ${n} cuotas
+      </div>
+
+      <div style="font-size:15px;color:#667085;margin-top:12px;">
+        Tasa nominal anual
+      </div>
+      <div style="font-size:20px;font-weight:700;">
+        43%
+      </div>
+
+      <div style="font-size:15px;color:#667085;margin-top:12px;">
+        Valor de cada cuota
+      </div>
+      <div style="font-size:28px;font-weight:900;">
+        ${money(valorCuota)}
+      </div>
+
+      <div style="font-size:15px;color:#667085;margin-top:12px;">
+        Total estimado a pagar
+      </div>
+      <div style="font-size:20px;font-weight:700;">
+        ${money(total)}
+      </div>
+    </div>
+  `;
+}
+
+plazo.addEventListener("change", calcularCuota);
+montoInput.addEventListener("input", calcularCuota);</script>
 </body>
 </html>
