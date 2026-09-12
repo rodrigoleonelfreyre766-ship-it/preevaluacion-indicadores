@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evaluación crediticia</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f8;color:#172033;font-family:Arial,sans-serif}.wrap{max-width:720px;margin:0 auto;padding:28px 18px}.card{background:#fff;border-radius:22px;padding:28px;box-shadow:0 10px 35px #00000012}h1{text-align:center;font-size:38px;margin:8px 0 10px}.sub{text-align:center;color:#667085;font-size:18px;margin-bottom:28px}label{font-weight:700;display:block;margin:16px 0 7px}input{width:100%;padding:16px;border:1px solid #d0d5dd;border-radius:12px;font-size:17px}button{width:100%;padding:17px;margin-top:20px;border:0;border-radius:12px;background:#172033;color:#fff;font-size:17px;font-weight:700}button:disabled{opacity:.6}#loading,#result{display:none;margin-top:22px}.loading{text-align:center;background:#f2f4f7;border-radius:16px;padding:30px;font-size:18px}.spin{font-size:34px;margin-bottom:10px}.result{border-radius:16px;padding:22px}.ok{background:#ecfdf3}.warn{background:#fffaeb}.err{background:#fef3f2}.status{text-align:center;font-size:24px;font-weight:800;margin-bottom:18px}.amount{font-size:28px;font-weight:800;text-align:center;margin:15px 0}.section{font-size:20px;font-weight:800;margin:24px 0 8px}.row{display:flex;justify-content:space-between;gap:18px;padding:11px 0;border-bottom:1px solid #e5e7eb}.row b{text-align:right;max-width:60%}.note{font-size:13px;line-height:1.5;color:#667085;margin-top:20px}.box{padding:16px;border-radius:12px;background:#fff;margin-top:12px}.factor{margin:8px 0}.neutral{background:#eef2ff}.warning{background:#fff7ed}.muted{color:#667085}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<h1>Evaluación crediticia</h1>
+<div class="sub">Consulta automática de información mediante Indicadores Argentina</div>
+
+<label for="cuit">CUIL / CUIT</label>
+<input id="cuit" inputmode="numeric" maxlength="13" placeholder="Ingresá 11 dígitos">
+<label for="monto">Monto solicitado</label>
+<input id="monto" inputmode="numeric" placeholder="Ej.: 3000000">
+<button id="btn" onclick="consultar()">EVALUAR SOLICITUD</button>
+
+<div id="loading" class="loading"><div class="spin">⏳</div><b>Estamos analizando los datos...</b><br><br>Consultando información disponible.</div>
+<div id="result"></div>
+
+<div class="note">Esta herramienta realiza una <b>preevaluación informativa</b>. No genera automáticamente una aprobación, rechazo ni un límite de crédito para una persona real. El resultado debe ser revisado por la persona o área responsable.</div>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const digits=v=>String(v||"").replace(/\D/g,"");
+const money=v=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(v)||0);
+
+async function consultar(){
+ const cuit=digits($("cuit").value), monto=Number(digits($("monto").value)||0);
+ const loading=$("loading"), result=$("result"), btn=$("btn");
+ if(cuit.length!==11){showError("CUIL/CUIT inválido. Ingresá los 11 dígitos del CUIL/CUIT.");return}
+ btn.disabled=true;loading.style.display="block";result.style.display="none";
+ try{
+  const r=await fetch("/.netlify/functions/persona?cuit="+encodeURIComponent(cuit));
+  const d=await r.json();
+  if(!r.ok) throw new Error(d.error||("HTTP "+r.status));
+  render(d,monto);
+ }catch(e){showError(e.message)}finally{btn.disabled=false}
+}
+
+function showError(msg){const result=$("result");$("loading").style.display="none";result.style.display="block";result.className="result err";result.innerHTML="<div class='status'>No se pudo consultar</div><p>"+escapeHtml(msg)+"</p>"}
+
+function render(d,monto){
+ const loading=$("loading"), result=$("result");loading.style.display="none";result.style.display="block";
+ const bcra=d.deudas_bcra, cheques=d.cheques_rechazados;
+ const fiscal=d.fiscal||{};
+ const hasIdentity=!!d.nombre_completo;
+ const hasFiscal=!!(fiscal.condicion||fiscal.estado||fiscal.actividad);
+ const hasBcra=!!bcra;
+ const hasChecks=!!cheques;
+ const dataPoints=[hasIdentity,hasFiscal,hasBcra,hasChecks].filter(Boolean).length;
+ result.className="result "+(dataPoints>=2?"ok":"warn");
+ let h="<div class='status'>PREEVALUACIÓN INFORMATIVA</div>";
+ h+="<div class='box neutral'><b>Resultado de consulta</b><p>Se encontró información suficiente para una revisión informativa. Este resultado no constituye una aprobación ni fija un monto de crédito.</p></div>";
+ h+="<div class='section'>Datos consultados</div>";
+ h+=row("Nombre",d.nombre_completo||"No informado");
+ h+=row("CUIL/CUIT",d.cuit||"");
+ h+=row("Alcance",d.alcance||"No informado");
+ if(hasFiscal){h+=row("Condición fiscal",fiscal.condicion||"No informada");h+=row("Estado fiscal",fiscal.estado||"No informado");h+=row("Actividad",fiscal.actividad||"No informada")}
+ h+="<div class='section'>Indicadores observados</div>";
+ h+="<div class='box'>";
+ h+="<div class='factor'>✓ Identidad: "+(hasIdentity?"informada":"no informada")+"</div>";
+ h+="<div class='factor'>✓ Información fiscal: "+(hasFiscal?"disponible":"no disponible")+"</div>";
+ h+="<div class='factor'>✓ Información BCRA: "+(hasBcra?"disponible en esta respuesta":"sin lectura disponible en esta respuesta")+"</div>";
+ h+="<div class='factor'>✓ Cheques rechazados: "+(hasChecks?"hay información devuelta":"sin registros devueltos en esta consulta")+"</div>";
+ h+="</div>";
+ if(hasBcra){
+  h+="<div class='section'>Información BCRA</div>";
+  h+=row("Período",bcra.periodo||"");
+  h+=row("Situación principal",(bcra.situacion_principal??"")+" — "+(bcra.situacion_principal_label||""));
+  h+=row("Peor situación",bcra.peor_situacion??"No informado");
+  h+=row("Deuda total",money((Number(bcra.deuda_total_miles)||0)*1000));
+  h+=row("Entidades informantes",bcra.entidades??"No informado");
+ }else{
+  h+="<div class='box warning'><b>BCRA:</b> no hay una lectura disponible en esta respuesta. Esto <b>no se interpreta como ausencia de deuda</b>.</div>";
+ }
+ if(hasChecks){
+  h+="<div class='section'>Cheques rechazados</div>";
+  h+=row("Total",cheques.total??0);h+=row("Impagos",cheques.impagos??0);
+ }else{
+  h+="<div class='box'><b>Cheques rechazados:</b> sin registros devueltos en esta consulta.</div>";
+ }
+ h+="<div class='section'>Solicitud</div>";
+ h+="<div class='amount'>Monto solicitado: "+money(monto)+"</div>";
+ h+="<div class='box neutral'><b>Próximo paso</b><p class='muted'>La información queda disponible para la revisión correspondiente. El monto definitivo, si corresponde, debe ser determinado mediante el proceso de evaluación humana aplicable.</p></div>";
+ result.innerHTML=h;
+}
+function row(a,b){return "<div class='row'><span>"+escapeHtml(a)+"</span><b>"+escapeHtml(String(b??""))+"</b></div>"}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+</script>
+</body>
+</html>
